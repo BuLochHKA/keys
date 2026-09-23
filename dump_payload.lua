@@ -170,6 +170,12 @@ else                                             -- Lua 5.2 / 5.3 / 5.4
   chunk, err = load(src, "@" .. TARGET, "t", FAKE)
 end
 if not chunk then log("COMPILE-ERROR", err); logf:close(); return end
+-- Also expose the shim on the real process globals, so any lookup path finds it.
+rawset(_G, "bit",   FAKE.bit)
+rawset(_G, "bit32", FAKE.bit)
+log("bit-check", "FAKE.bit=" .. type(FAKE.bit),
+    "FAKE.bit.bor=" .. type(FAKE.bit and FAKE.bit.bor),
+    "FAKE.bit.rshift=" .. type(FAKE.bit and FAKE.bit.rshift))
 log("=== running payload in sandbox ===")
 local ok, e = pcall(chunk)
 log("=== payload returned ===", "ok=" .. tostring(ok), e and ("err=" .. tostring(e)) or "")
