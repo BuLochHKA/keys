@@ -59,7 +59,7 @@ local function proxy(path)
 end
 
 -- Capture code the payload tries to compile/run at runtime.
-local real_load = load or loadstring
+local real_load = loadstring or load   -- Lua 5.1: loadstring takes a string; load takes a reader fn
 local function capture_loadstring(src, chunkname)
   if type(src) == "string" then
     nested_n = nested_n + 1
