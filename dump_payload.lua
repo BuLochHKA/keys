@@ -100,8 +100,46 @@ FAKE.string = string
 FAKE.table  = table
 FAKE.math   = math
 FAKE.os     = { time = os.time, clock = os.clock, date = os.date, getenv = function() return nil end }
-FAKE.bit    = rawget(_G, "bit") or rawget(_G, "bit32")
-FAKE.bit32  = rawget(_G, "bit32") or rawget(_G, "bit")
+-- The obfuscator needs a `bit` library. Use the host's if present (LuaJIT /
+-- Lua 5.2 bit32), otherwise build a portable 32-bit shim in pure arithmetic so
+-- plain Lua 5.3 / 5.4 works too.
+local function make_bit()
+  local host = rawget(_G, "bit") or rawget(_G, "bit32")
+  if host then return host end
+  local M2 = 4294967296            -- 2^32
+  local function norm(x) x = x % M2; return x end
+  local function bitop(a, b, f)
+    a, b = norm(a), norm(b); local r, p = 0, 1
+    for _ = 1, 32 do
+      local abit, bbit = a % 2, b % 2
+      if f(abit, bbit) == 1 then r = r + p end
+      a = (a - abit) / 2; b = (b - bbit) / 2; p = p * 2
+    end
+    return r
+  end
+  local B = {}
+  function B.band(a, b, ...) local r = bitop(a, b, function(x, y) return (x == 1 and y == 1) and 1 or 0 end)
+    for _, v in ipairs({ ... }) do r = B.band(r, v) end return r end
+  function B.bor(a, b, ...)  local r = bitop(a, b, function(x, y) return (x == 1 or y == 1) and 1 or 0 end)
+    for _, v in ipairs({ ... }) do r = B.bor(r, v) end return r end
+  function B.bxor(a, b, ...) local r = bitop(a, b, function(x, y) return (x ~= y) and 1 or 0 end)
+    for _, v in ipairs({ ... }) do r = B.bxor(r, v) end return r end
+  function B.bnot(a)        return norm(-1 - norm(a)) end
+  function B.lshift(a, n)   return norm(norm(a) * 2 ^ (n % 32)) end
+  function B.rshift(a, n)   return math.floor(norm(a) / 2 ^ (n % 32)) end
+  function B.arshift(a, n)  local x = norm(a); if x >= M2 / 2 then x = x - M2 end
+    return math.floor(x / 2 ^ (n % 32)) % M2 end
+  function B.rol(a, n) n = n % 32; a = norm(a) return norm(B.lshift(a, n) + B.rshift(a, 32 - n)) end
+  function B.ror(a, n) n = n % 32; a = norm(a) return norm(B.rshift(a, n) + B.lshift(a, 32 - n)) end
+  function B.tobit(a)  a = norm(a); if a >= M2 / 2 then a = a - M2 end return a end
+  function B.tohex(a)  return string.format("%08x", norm(a)) end
+  function B.bswap(a)  a = norm(a)
+    local b0, b1, b2, b3 = a % 256, math.floor(a / 256) % 256, math.floor(a / 65536) % 256, math.floor(a / 16777216) % 256
+    return b0 * 16777216 + b1 * 65536 + b2 * 256 + b3 end
+  return B
+end
+FAKE.bit    = make_bit()
+FAKE.bit32  = FAKE.bit
 FAKE.load        = capture_loadstring
 FAKE.loadstring  = capture_loadstring
 FAKE.require     = function(id) log("require", id); return proxy("require(" .. tostring(id) .. ")") end
