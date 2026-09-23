@@ -26,12 +26,14 @@
 local TARGET = "0e35b94b-777.lua"
 local logf = assert(io.open("dump.log", "w"))
 local nested_n = 0
+local realprint = print                              -- capture before we override globals
+local realtb = (type(debug) == "table") and debug.traceback or function() return "" end
 
 local function log(...)
   local parts = {}
   for i = 1, select("#", ...) do parts[i] = tostring((select(i, ...))) end
   local line = table.concat(parts, "\t")
-  print(line); logf:write(line, "\n"); logf:flush()
+  realprint(line); logf:write(line, "\n"); logf:flush()
 end
 
 -- A proxy object: records every index/call/concat and keeps working (chainable),
@@ -84,7 +86,11 @@ FAKE.pcall        = pcall
 FAKE.xpcall       = xpcall
 FAKE.select       = select
 FAKE.error        = function(m) log("error", m) end
-FAKE.assert       = function(v, m, ...) if not v then log("assert-fail", m) end return v, m, ... end
+FAKE.assert       = function(v, m, ...)
+  if v then return v, m, ... end
+  log("assert-fail", "arg1type=" .. type(v), "msg=" .. tostring(m), realtb("", 2))
+  return proxy("assert-recovered")   -- keep the chain alive so we see what follows
+end
 FAKE.ipairs       = ipairs
 FAKE.pairs        = pairs
 FAKE.next         = next
@@ -170,9 +176,13 @@ else                                             -- Lua 5.2 / 5.3 / 5.4
   chunk, err = load(src, "@" .. TARGET, "t", FAKE)
 end
 if not chunk then log("COMPILE-ERROR", err); logf:close(); return end
--- Also expose the shim on the real process globals, so any lookup path finds it.
+-- The payload also reads some names from the REAL global table (not just its
+-- _ENV), so mirror the whole fake environment into _G and give _G the same
+-- missing-global logger. (Harmless: we run the untrusted chunk last.)
+for k, v in pairs(FAKE) do rawset(_G, k, v) end
 rawset(_G, "bit",   FAKE.bit)
 rawset(_G, "bit32", FAKE.bit)
+setmetatable(_G, getmetatable(FAKE))
 log("bit-check", "FAKE.bit=" .. type(FAKE.bit),
     "FAKE.bit.bor=" .. type(FAKE.bit and FAKE.bit.bor),
     "FAKE.bit.rshift=" .. type(FAKE.bit and FAKE.bit.rshift))
