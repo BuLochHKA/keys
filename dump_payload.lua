@@ -124,9 +124,14 @@ end })
 
 -- Load the target file's source and run it inside the sandbox.
 local src = assert(io.open(TARGET, "r")):read("*a")
-local chunk, err = real_load(src, "@" .. TARGET)
+local chunk, err
+if setfenv then                                  -- Lua 5.1 / LuaJIT
+  chunk, err = real_load(src, "@" .. TARGET)
+  if chunk then setfenv(chunk, FAKE) end
+else                                             -- Lua 5.2 / 5.3 / 5.4
+  chunk, err = load(src, "@" .. TARGET, "t", FAKE)
+end
 if not chunk then log("COMPILE-ERROR", err); logf:close(); return end
-if setfenv then setfenv(chunk, FAKE) end     -- Lua 5.1 / LuaJIT
 log("=== running payload in sandbox ===")
 local ok, e = pcall(chunk)
 log("=== payload returned ===", "ok=" .. tostring(ok), e and ("err=" .. tostring(e)) or "")
