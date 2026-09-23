@@ -141,7 +141,32 @@ itself just one opcode the compiled program can invoke):
   environment and logs every global access, URL, key and nested `loadstring`.
   That is what **`dump_payload.lua`** (in this repo) does.
 
-## 8. Files in this branch
+## 8. Behavioural result (from running `dump_payload.lua`)
+
+Running the payload under the sandbox got past the VM bootstrap and revealed the
+program's real purpose. It is **not** a Roblox/key script — it is a **Windows
+LuaJIT-FFI game cheat for a Steam Counter-Strike (Source-engine) title**:
+
+* Loads WinAPI DLLs via FFI: `ffi.load("kernel32" / "user32" / "advapi32" /
+  "msvcrt")`.
+* **Signature-scans game modules** for function addresses (classic pattern
+  scanning): `utils.opcode_scan("steam_api.dll", "55 8B EC 83 3D ? ? ? ? …")`
+  and `utils.opcode_scan("client.dll", "B9 ? ? ? ? E8 ? ? ? ? …")`.
+* **Hooks C++ vtables** (`__thiscall`, `ffi.cast`, `ffi.metatype`) around
+  `SteamAPICall_t` (Steam API call dispatcher) and `http_HHTMLBrowser` (Steam's
+  embedded HTML browser callbacks: page title, start-request, JS dialog, …).
+* Registers a shutdown hook via `events.shutdown.set(...)`.
+
+The sandbox stops at `arithmetic on a table value` because real FFI would return
+numeric pointers here; going further needs a live game process + real Windows
+memory, not a sandbox. The behaviour above is the meaningful deobfuscation
+result.
+
+> ⚠ This is injectable game-hacking code with full FFI/WinAPI access to the
+> host process. Treat the sample as untrusted/potentially malicious and only
+> run the sandbox harness (never the raw file) inside a throwaway VM.
+
+## 9. Files in this branch
 
 | File                          | What it is                                              |
 |-------------------------------|---------------------------------------------------------|
