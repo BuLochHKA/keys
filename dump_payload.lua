@@ -85,12 +85,10 @@ FAKE.type         = type
 FAKE.pcall        = pcall
 FAKE.xpcall       = xpcall
 FAKE.select       = select
-FAKE.error        = function(m) log("error", m) end
-FAKE.assert       = function(v, m, ...)
-  if v then return v, m, ... end
-  log("assert-fail", "arg1type=" .. type(v), "msg=" .. tostring(m), realtb("", 2))
-  return proxy("assert-recovered")   -- keep the chain alive so we see what follows
-end
+-- Use REAL assert/error: the payload probes them inside its own pcall and
+-- relies on them raising exactly like stock Lua. Faking them trips anti-tamper.
+FAKE.error        = error
+FAKE.assert       = assert
 FAKE.ipairs       = ipairs
 FAKE.pairs        = pairs
 FAKE.next         = next
